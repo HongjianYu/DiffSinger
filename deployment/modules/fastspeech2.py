@@ -45,7 +45,7 @@ class FastSpeech2AcousticONNX(FastSpeech2Acoustic):
         super().__init__(vocab_size=vocab_size)
 
         # for temporary compatibility; will be completely removed in the future
-        self.f0_embed_type = hparams['f0_embed_type']
+        self.f0_embed_type = hparams.get('f0_embed_type', 'continuous')
         if self.f0_embed_type == 'discrete':
             self.pitch_embed = Embedding(300, hparams['hidden_size'], PAD_INDEX)
 

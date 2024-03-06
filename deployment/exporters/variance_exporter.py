@@ -9,6 +9,7 @@ import yaml
 
 from basics.base_exporter import BaseExporter
 from deployment.modules.toplevel import DiffSingerVarianceONNX
+from modules.fastspeech.param_adaptor import VARIANCE_CHECKLIST
 from utils import load_ckpt, onnx_helper, remove_suffix
 from utils.hparams import hparams
 from utils.phoneme_utils import locate_dictionary, build_phoneme_list
@@ -163,6 +164,8 @@ class DiffSingerVarianceExporter(BaseExporter):
             dsconfig['pitch'] = f'{model_name}.pitch.onnx'
         if self.model.predict_variances:
             dsconfig['variance'] = f'{model_name}.variance.onnx'
+            for variance in VARIANCE_CHECKLIST:
+                dsconfig[f'predict_{variance}'] = (variance in self.model.variance_prediction_list)
         # frame specifications
         dsconfig['sample_rate'] = hparams['audio_sample_rate']
         dsconfig['hop_size'] = hparams['hop_size']

@@ -213,9 +213,9 @@ class BaseTask(pl.LightningModule):
         """
         :return: total loss: torch.Tensor, loss_log: dict, other_log: dict
         """
-        losses = self.run_model(sample)
+        losses, adaptive_k_step = self.run_model(sample)
         total_loss = sum(losses.values())
-        return total_loss, {**losses, 'batch_size': float(sample['size'])}
+        return total_loss, {**losses, 'batch_size': float(sample['size']), 'adaptive_k': adaptive_k_step}
 
     def training_step(self, sample, batch_idx):
         total_loss, log_outputs = self._training_step(sample)

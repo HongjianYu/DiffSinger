@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch import Tensor
 
 from basics.base_module import CategorizedModule
-from modules.aux_decoder import AuxDecoderAdaptor
+from modules.aux_decoder import AuxDecoderAdaptor, build_aux_loss
 from modules.commons.common_layers import (
     XavierUniformInitLinear as Linear,
     NormalInitEmbedding as Embedding
@@ -51,6 +51,10 @@ class DiffSingerAcoustic(CategorizedModule, ParameterAdaptorModule):
                 aux_decoder_arch=self.shallow_args['aux_decoder_arch'],
                 aux_decoder_args=self.shallow_args['aux_decoder_args']
             )
+            ### adaptive_k_step ###
+            self.build_aux_mel_loss = build_aux_loss(self.shallow_args['aux_decoder_arch'])
+            self.aux_mel_loss = None
+            ### adaptive_k_step ###
 
         self.diffusion = GaussianDiffusion(
             out_dims=out_dims,
@@ -77,8 +81,8 @@ class DiffSingerAcoustic(CategorizedModule, ParameterAdaptorModule):
         )
         if infer:
             if self.use_shallow_diffusion:
-                aux_mel_pred = self.aux_decoder(condition, infer=True)
-                aux_mel_pred *= ((mel2ph > 0).float()[:, :, None])
+                aux_out = self.aux_decoder(condition, infer=True)
+                aux_mel_pred = aux_out * ((mel2ph > 0).float()[:, :, None])
                 if gt_mel is not None and self.shallow_args['val_gt_start']:
                     src_mel = gt_mel
                 else:
@@ -87,12 +91,17 @@ class DiffSingerAcoustic(CategorizedModule, ParameterAdaptorModule):
                 aux_mel_pred = src_mel = None
             mel_pred = self.diffusion(condition, src_spec=src_mel, infer=True)
             mel_pred *= ((mel2ph > 0).float()[:, :, None])
-            return ShallowDiffusionOutput(aux_out=aux_mel_pred, diff_out=mel_pred)
+            return ShallowDiffusionOutput(aux_out=aux_mel_pred, diff_out=mel_pred), None
         else:
             if self.use_shallow_diffusion:
                 if self.train_aux_decoder:
                     aux_cond = condition * self.aux_decoder_grad + condition.detach() * (1 - self.aux_decoder_grad)
                     aux_out = self.aux_decoder(aux_cond, infer=False)
+                    ### adaptive_k_step ###
+                    norm_gt = self.aux_decoder.norm_spec(gt_mel)
+                    self.aux_mel_loss = self.build_aux_mel_loss(aux_out, norm_gt)
+                    adaptive_k_step = self.diffusion.set_adaptive_k_step(self.aux_mel_loss)
+                    ### adaptive_k_step ###
                 else:
                     aux_out = None
                 if self.train_diffusion:
@@ -100,7 +109,7 @@ class DiffSingerAcoustic(CategorizedModule, ParameterAdaptorModule):
                     diff_out = (x_recon, noise)
                 else:
                     diff_out = None
-                return ShallowDiffusionOutput(aux_out=aux_out, diff_out=diff_out)
+                return ShallowDiffusionOutput(aux_out=aux_out, diff_out=diff_out), adaptive_k_step
 
             else:
                 aux_out = None
@@ -239,7 +248,8 @@ class DiffSingerVariance(CategorizedModule, ParameterAdaptorModule):
                     delta_pitch_in = (pitch - base_pitch) * ~pitch_retake
                 pitch_cond += self.delta_pitch_embed(delta_pitch_in[:, :, None])
             else:
-                base_pitch = base_pitch * pitch_retake + pitch * ~pitch_retake
+                if not retake_unset:  # retake
+                    base_pitch = base_pitch * pitch_retake + pitch * ~pitch_retake
                 pitch_cond += self.base_pitch_embed(base_pitch[:, :, None])
 
             if infer:

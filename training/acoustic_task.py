@@ -119,7 +119,7 @@ class AcousticTask(BaseTask):
             spk_embed_id = sample['spk_ids']
         else:
             spk_embed_id = None
-        output: ShallowDiffusionOutput = self.model(
+        output, adaptive_k_step = self.model(
             txt_tokens, mel2ph=mel2ph, f0=f0, **variances,
             key_shift=key_shift, speed=speed, spk_embed_id=spk_embed_id,
             gt_mel=target, infer=infer
@@ -131,9 +131,7 @@ class AcousticTask(BaseTask):
             losses = {}
 
             if output.aux_out is not None:
-                aux_out = output.aux_out
-                norm_gt = self.model.aux_decoder.norm_spec(target)
-                aux_mel_loss = self.lambda_aux_mel_loss * self.aux_mel_loss(aux_out, norm_gt)
+                aux_mel_loss = self.lambda_aux_mel_loss * self.model.aux_mel_loss
                 losses['aux_mel_loss'] = aux_mel_loss
 
             if output.diff_out is not None:
@@ -141,7 +139,7 @@ class AcousticTask(BaseTask):
                 mel_loss = self.mel_loss(x_recon, x_noise, nonpadding=(mel2ph > 0).unsqueeze(-1).float())
                 losses['mel_loss'] = mel_loss
 
-            return losses
+            return losses, adaptive_k_step
 
     def on_train_start(self):
         if self.use_vocoder and self.vocoder.get_device() != self.device:
@@ -152,11 +150,11 @@ class AcousticTask(BaseTask):
             self.vocoder.to_device(self.device)
 
     def _validation_step(self, sample, batch_idx):
-        losses = self.run_model(sample, infer=False)
+        losses, _ = self.run_model(sample, infer=False)
         if sample['size'] > 0 and min(sample['indices']) < hparams['num_valid_plots']:
             mel_out: ShallowDiffusionOutput = self.run_model(sample, infer=True)
             for i in range(len(sample['indices'])):
-                data_idx = sample['indices'][i]
+                data_idx = sample['indices'][i].item()
                 if data_idx < hparams['num_valid_plots']:
                     if self.use_vocoder:
                         self.plot_wav(
