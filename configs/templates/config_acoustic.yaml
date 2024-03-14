@@ -48,7 +48,7 @@ residual_layers: 20
 
 # shallow diffusion
 use_shallow_diffusion: true
-# K_step: 250
+K_step: 250
 K_step_infer: 250
 shallow_diffusion_args:
   train_aux_decoder: true

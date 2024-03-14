@@ -10,6 +10,7 @@ infer_out/
 /data/*
 !/data/.gitkeep
 /checkpoints/*
+/checkpoints_backup/*
 !/checkpoints/.gitkeep
 /venv/
 /artifacts/

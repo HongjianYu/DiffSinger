@@ -174,7 +174,7 @@ class DiffSingerAcousticInfer(BaseSVSInfer):
             )  # => [B, T, H]
         else:
             spk_mix_embed = None
-        mel_pred: ShallowDiffusionOutput = self.model(
+        mel_pred, _ = self.model(
             txt_tokens, mel2ph=sample['mel2ph'], f0=sample['f0'], **variances,
             key_shift=sample.get('key_shift'), speed=sample.get('speed'),
             spk_mix_embed=spk_mix_embed, infer=True

@@ -84,6 +84,7 @@ class GaussianDiffusion(nn.Module):
         self.use_shallow_diffusion = hparams.get('use_shallow_diffusion', False)
         if self.use_shallow_diffusion:
             assert k_step <= timesteps, 'K_step should not be larger than timesteps.'
+            self.training_momentum = None
             self.aux_mel_loss = None
         self.timesteps = timesteps
         self.k_step = k_step if self.use_shallow_diffusion else timesteps
@@ -122,17 +123,22 @@ class GaussianDiffusion(nn.Module):
 
     ### adaptive_k_step ###
     def set_adaptive_k_step(self, curr_aux_loss):
+        prev_momentum = self.training_momentum
         prev_aux_loss = self.aux_mel_loss
 
-        if prev_aux_loss is None:
-            self.k_step = self.timesteps
-        else:
-            shift_rate = (curr_aux_loss - prev_aux_loss) / prev_aux_loss
-            k = (1 + 0.025 * shift_rate) * self.k_step
-            self.k_step = max(min(int(k), self.timesteps), 250)
+        k_infer = 250
+        k_shallow = self.timesteps
 
-        # print(f"Loss: {aux_mel_loss}")
-        # print(f"Adaptive K: {self.k_step}")
+        if prev_aux_loss is None:
+            curr_momentum = -0.9
+            self.k_step = k_shallow
+        else:
+            loss_shift = (curr_aux_loss - prev_aux_loss) / prev_aux_loss
+            curr_momentum = 0.95 * prev_momentum + (1 - 0.95) * loss_shift
+            k = (18 * torch.tanh(curr_aux_loss) + curr_momentum) * k_infer
+            self.k_step = int(torch.clamp(k, min=k_infer, max=k_shallow))
+
+        self.training_momentum = curr_momentum
         self.aux_mel_loss = curr_aux_loss
         return self.k_step
     ### adaptive_k_step ###
